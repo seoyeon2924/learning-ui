@@ -1,256 +1,181 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TablePagination,
-  Chip,
-  Button,
-  TextField,
-  InputAdornment,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Snackbar,
-  Alert,
-} from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-import axios from 'axios';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import dayjs from 'dayjs';
 
 interface Course {
   id: number;
-  name: string;
+  title: string;
   instructor: string;
-  courseStartDate: string;
-  courseEndDate: string;
+  credits: number;
+  maxParticipants: number;
   registrationStartDate: string;
   registrationEndDate: string;
-  maxParticipants: number;
-  currentParticipants?: number;
-  description: string;
-  credits: number;
+  startDate: string;
+  endDate: string;
+  status: string;
 }
 
 const CourseList: React.FC = () => {
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [searchTerm, setSearchTerm] = useState('');
   const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: '',
-    severity: 'success' as 'success' | 'error',
-  });
+  const [loading, setLoading] = useState(false);
+
+  const fetchCourses = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:8080/api/courses');
+      if (!response.ok) {
+        throw new Error('과정 목록을 불러오는데 실패했습니다.');
+      }
+      const data = await response.json();
+      const uniqueCourses = data.filter((course: Course, index: number, self: Course[]) =>
+        index === self.findIndex((t) => t.id === course.id)
+      );
+      setCourses(uniqueCourses);
+    } catch (error) {
+      alert('과정 목록을 불러오는데 실패했습니다.');
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('정말 삭제하시겠습니까?')) return;
+    
+    try {
+      const response = await fetch(`http://localhost:8080/api/courses/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        throw new Error('과정 삭제에 실패했습니다.');
+      }
+      alert('과정이 삭제되었습니다.');
+      fetchCourses();
+    } catch (error) {
+      alert('과정 삭제에 실패했습니다.');
+      console.error('Error:', error);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const cleanStatus = status.replace(/['"]/g, '').trim();
+    const statusMap: { [key: string]: { color: string; text: string } } = {
+      OPEN: { color: 'bg-green-100 text-green-800', text: '수강신청 가능' },
+      CLOSED: { color: 'bg-red-100 text-red-800', text: '마감' },
+      IN_PROGRESS: { color: 'bg-blue-100 text-blue-800', text: '진행중' },
+    };
+    const statusInfo = statusMap[cleanStatus] || { color: 'bg-gray-100 text-gray-800', text: cleanStatus };
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
+        {statusInfo.text}
+      </span>
+    );
+  };
 
   useEffect(() => {
     fetchCourses();
   }, []);
 
-  const fetchCourses = async () => {
-    try {
-      const response = await axios.get('http://localhost:8080/api/courses');
-      setCourses(response.data);
-      setLoading(false);
-    } catch (err) {
-      setError('과정 목록을 불러오는데 실패했습니다.');
-      setLoading(false);
-    }
-  };
-
-  const handleRegister = async (courseId: number) => {
-    try {
-      await axios.post('http://localhost:8080/api/course-registrations', {
-        courseId,
-        userId: 1, // TODO: 실제 로그인된 사용자 ID로 변경
-      });
-      setSnackbar({
-        open: true,
-        message: '수강신청이 완료되었습니다.',
-        severity: 'success',
-      });
-      setOpenDialog(false);
-      fetchCourses(); // 목록 새로고침
-    } catch (err) {
-      setSnackbar({
-        open: true,
-        message: '수강신청 중 오류가 발생했습니다.',
-        severity: 'error',
-      });
-    }
-  };
-
-  const handleChangePage = (event: unknown, newPage: number) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
-
-  const getRegistrationStatus = (course: Course) => {
-    const now = new Date();
-    const startDate = new Date(course.registrationStartDate);
-    const endDate = new Date(course.registrationEndDate);
-
-    if (now < startDate) return { text: '신청 예정', color: 'warning' };
-    if (now > endDate) return { text: '신청 마감', color: 'error' };
-    return { text: '신청 가능', color: 'success' };
-  };
-
-  if (loading) return <Box p={3}>로딩 중...</Box>;
-  if (error) return <Box p={3}>{error}</Box>;
+  if (loading) {
+    return <div className="p-6">로딩중...</div>;
+  }
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4">과정 목록</Typography>
-      </Box>
-
-      <TextField
-        fullWidth
-        variant="outlined"
-        placeholder="과정명 또는 강사명으로 검색"
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        sx={{ mb: 3 }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <SearchIcon />
-            </InputAdornment>
-          ),
-        }}
-      />
-
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>과정명</TableCell>
-              <TableCell>강사</TableCell>
-              <TableCell>학점</TableCell>
-              <TableCell>수강기간</TableCell>
-              <TableCell>신청기간</TableCell>
-              <TableCell>상태</TableCell>
-              <TableCell align="right">수강인원</TableCell>
-              <TableCell align="right">수강신청</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {courses
-              .filter(
-                (course) =>
-                  course.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                  course.instructor.toLowerCase().includes(searchTerm.toLowerCase())
-              )
-              .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-              .map((course) => {
-                const status = getRegistrationStatus(course);
-                return (
-                  <TableRow key={course.id}>
-                    <TableCell>{course.name}</TableCell>
-                    <TableCell>{course.instructor}</TableCell>
-                    <TableCell>{course.credits}학점</TableCell>
-                    <TableCell>
-                      {new Date(course.courseStartDate).toLocaleDateString()} ~{' '}
-                      {new Date(course.courseEndDate).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      {new Date(course.registrationStartDate).toLocaleDateString()} ~{' '}
-                      {new Date(course.registrationEndDate).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={status.text}
-                        color={status.color as any}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      {course.currentParticipants || 0}/{course.maxParticipants}명
-                    </TableCell>
-                    <TableCell align="right">
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        size="small"
-                        onClick={() => {
-                          setSelectedCourse(course);
-                          setOpenDialog(true);
-                        }}
-                        disabled={status.text !== '신청 가능'}
-                      >
-                        신청
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      <TablePagination
-        component="div"
-        count={courses.length}
-        page={page}
-        onPageChange={handleChangePage}
-        rowsPerPage={rowsPerPage}
-        onRowsPerPageChange={handleChangeRowsPerPage}
-        labelRowsPerPage="페이지당 행 수"
-      />
-
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
-        <DialogTitle>수강신청 확인</DialogTitle>
-        <DialogContent>
-          <Typography>
-            {selectedCourse?.name} ({selectedCourse?.credits}학점) 과정을
-            신청하시겠습니까?
-          </Typography>
-          <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-            강사: {selectedCourse?.instructor}
-          </Typography>
-          <Typography variant="body2" color="textSecondary">
-            수강기간: {selectedCourse?.courseStartDate} ~ {selectedCourse?.courseEndDate}
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>취소</Button>
-          <Button
-            onClick={() => selectedCourse && handleRegister(selectedCourse.id)}
-            variant="contained"
-            color="primary"
-          >
-            신청
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-      >
-        <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
-          severity={snackbar.severity}
+    <div style={{ padding: '20px' }}>
+      <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ fontSize: '24px', fontWeight: 'bold' }}>과정 목록</h2>
+        <Link 
+          to="/courses/create"
+          style={{ 
+            backgroundColor: '#3b82f6', 
+            color: 'white', 
+            padding: '8px 16px', 
+            borderRadius: '4px',
+            textDecoration: 'none'
+          }}
         >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Box>
+          과정 등록
+        </Link>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6' }}>과정명</th>
+              <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6' }}>강사</th>
+              <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6' }}>학점</th>
+              <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6' }}>수강인원</th>
+              <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6' }}>수강신청 기간</th>
+              <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6' }}>과정 기간</th>
+              <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6' }}>상태</th>
+              <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6' }}>관리</th>
+            </tr>
+          </thead>
+          <tbody>
+            {courses.map((course) => (
+              <tr key={course.id}>
+                <td style={{ border: '1px solid #ddd', padding: '8px' }}>
+                  <Link 
+                    to={`/courses/${course.id}`}
+                    style={{ color: '#2563eb', textDecoration: 'none' }}
+                  >
+                    {course.title}
+                  </Link>
+                </td>
+                <td style={{ border: '1px solid #ddd', padding: '8px' }}>{course.instructor}</td>
+                <td style={{ border: '1px solid #ddd', padding: '8px' }}>{course.credits}</td>
+                <td style={{ border: '1px solid #ddd', padding: '8px' }}>{course.maxParticipants}</td>
+                <td style={{ border: '1px solid #ddd', padding: '8px' }}>
+                  {dayjs(course.registrationStartDate).format('YYYY-MM-DD')} ~{' '}
+                  {dayjs(course.registrationEndDate).format('YYYY-MM-DD')}
+                </td>
+                <td style={{ border: '1px solid #ddd', padding: '8px' }}>
+                  {dayjs(course.startDate).format('YYYY-MM-DD')} ~{' '}
+                  {dayjs(course.endDate).format('YYYY-MM-DD')}
+                </td>
+                <td style={{ border: '1px solid #ddd', padding: '8px' }}>
+                  <span style={{ 
+                    padding: '4px 8px', 
+                    borderRadius: '4px',
+                    backgroundColor: course.status.includes('OPEN') ? '#dcfce7' : 
+                                   course.status.includes('CLOSED') ? '#fee2e2' : '#f3f4f6',
+                    color: course.status.includes('OPEN') ? '#166534' : 
+                           course.status.includes('CLOSED') ? '#991b1b' : '#374151'
+                  }}>
+                    {course.status.includes('OPEN') ? '수강신청 가능' :
+                     course.status.includes('CLOSED') ? '마감' :
+                     course.status}
+                  </span>
+                </td>
+                <td style={{ border: '1px solid #ddd', padding: '8px' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <Link 
+                      to={`/courses/edit/${course.id}`}
+                      style={{ color: '#2563eb', textDecoration: 'none' }}
+                    >
+                      수정
+                    </Link>
+                    <button
+                      onClick={() => handleDelete(course.id)}
+                      style={{ 
+                        color: '#dc2626', 
+                        border: 'none', 
+                        background: 'none', 
+                        cursor: 'pointer',
+                        padding: 0
+                      }}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 };
 

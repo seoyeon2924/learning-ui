@@ -33,17 +33,20 @@ interface Content {
 
 const CONTENT_TYPES = ['동영상', 'PDF', 'ZIP'];
 
+const EMPTY_CONTENT = {
+  title: '',
+  type: '동영상',
+  duration: '',
+  url: '',
+};
+
 const ContentManagement: React.FC = () => {
   const [contents, setContents] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
-  const [newContent, setNewContent] = useState({
-    title: '',
-    type: '동영상',
-    duration: '',
-    url: '',
-  });
+  const [editingContent, setEditingContent] = useState<Content | null>(null);
+  const [formData, setFormData] = useState(EMPTY_CONTENT);
 
   useEffect(() => {
     fetchContents();
@@ -69,19 +72,41 @@ const ContentManagement: React.FC = () => {
     }
   };
 
-  const handleCreate = async () => {
-    try {
-      await axios.post('http://localhost:8080/api/contents', newContent);
-      setOpenDialog(false);
-      setNewContent({
-        title: '',
-        type: '동영상',
-        duration: '',
-        url: '',
+  const handleOpenDialog = (content?: Content) => {
+    if (content) {
+      setEditingContent(content);
+      setFormData({
+        title: content.title,
+        type: content.type,
+        duration: content.duration,
+        url: content.url,
       });
+    } else {
+      setEditingContent(null);
+      setFormData(EMPTY_CONTENT);
+    }
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+    setEditingContent(null);
+    setFormData(EMPTY_CONTENT);
+  };
+
+  const handleSubmit = async () => {
+    try {
+      if (editingContent) {
+        // 수정
+        await axios.put(`http://localhost:8080/api/contents/${editingContent.id}`, formData);
+      } else {
+        // 등록
+        await axios.post('http://localhost:8080/api/contents', formData);
+      }
+      handleCloseDialog();
       fetchContents(); // 목록 새로고침
     } catch (err) {
-      setError('콘텐츠 등록에 실패했습니다.');
+      setError(editingContent ? '콘텐츠 수정에 실패했습니다.' : '콘텐츠 등록에 실패했습니다.');
     }
   };
 
@@ -98,7 +123,7 @@ const ContentManagement: React.FC = () => {
         <Button 
           variant="contained" 
           startIcon={<AddIcon />}
-          onClick={() => setOpenDialog(true)}
+          onClick={() => handleOpenDialog()}
         >
           콘텐츠 등록
         </Button>
@@ -129,7 +154,12 @@ const ContentManagement: React.FC = () => {
                 <TableCell>{content.duration}</TableCell>
                 <TableCell>{new Date(content.uploadDate).toLocaleDateString()}</TableCell>
                 <TableCell>
-                  <Button variant="outlined" size="small" sx={{ mr: 1 }}>
+                  <Button 
+                    variant="outlined" 
+                    size="small" 
+                    sx={{ mr: 1 }}
+                    onClick={() => handleOpenDialog(content)}
+                  >
                     수정
                   </Button>
                   <Button 
@@ -147,22 +177,22 @@ const ContentManagement: React.FC = () => {
         </Table>
       </TableContainer>
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>콘텐츠 등록</DialogTitle>
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingContent ? '콘텐츠 수정' : '콘텐츠 등록'}</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField
               label="제목"
               fullWidth
-              value={newContent.title}
-              onChange={(e) => setNewContent({ ...newContent, title: e.target.value })}
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             />
             <TextField
               select
               label="유형"
               fullWidth
-              value={newContent.type}
-              onChange={(e) => setNewContent({ ...newContent, type: e.target.value })}
+              value={formData.type}
+              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
             >
               {CONTENT_TYPES.map((type) => (
                 <MenuItem key={type} value={type}>
@@ -173,27 +203,27 @@ const ContentManagement: React.FC = () => {
             <TextField
               label="재생시간"
               fullWidth
-              value={newContent.duration}
-              onChange={(e) => setNewContent({ ...newContent, duration: e.target.value })}
+              value={formData.duration}
+              onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
               placeholder="예: 1시간 30분, PDF의 경우 -"
             />
             <TextField
               label="URL"
               fullWidth
-              value={newContent.url}
-              onChange={(e) => setNewContent({ ...newContent, url: e.target.value })}
+              value={formData.url}
+              onChange={(e) => setFormData({ ...formData, url: e.target.value })}
               placeholder="예: https://example.com/content.mp4"
             />
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>취소</Button>
+          <Button onClick={handleCloseDialog}>취소</Button>
           <Button 
             variant="contained" 
-            onClick={handleCreate}
-            disabled={!newContent.title || !newContent.url}
+            onClick={handleSubmit}
+            disabled={!formData.title || !formData.url}
           >
-            등록
+            {editingContent ? '수정' : '등록'}
           </Button>
         </DialogActions>
       </Dialog>
